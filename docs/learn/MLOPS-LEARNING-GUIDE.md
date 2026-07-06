@@ -206,7 +206,7 @@ walk it bottom-up, in the order Terraform applies modules.
 
 ```
 mlops/
-├── CLAUDE.md                      ← project bible (read this first in real life)
+├── README.md                      ← project bible (read this first in real life)
 ├── adaptive-mcq-platform.jsx      ← client-side React app (kept for reference)
 ├── infra /                        ← Terraform (note trailing space in dir name)
 │   ├── main.tf, variables.tf, outputs.tf, backend.tf
@@ -680,7 +680,7 @@ The RDS MySQL instance holds **only the PII** — name, email, phone,
 encrypted with column-level encryption. It is *never* part of the ML
 training data. The ML pipeline sees only `student_id` (UUID).
 
-This separation is one of the project's load-bearing rules (see CLAUDE.md
+This separation is one of the project's load-bearing rules (see README.md
 rule #4). The reasons are compliance (FERPA, GDPR), security blast radius,
 and operational simplicity (you can wipe the entire ML side without
 touching student records).
@@ -1706,7 +1706,7 @@ log lines where the LOG feature vector is too coarse.
 
 The data validation step (`ml/pipelines/_shared/data_validation.py`) has a
 PII scanner — refuses to run if log lines contain phone numbers or email
-addresses (CLAUDE.md rule #1):
+addresses (README.md rule #1):
 
 ```python
 PII_FIELDS = {"name", "first_name", "last_name", "email", "phone", "address", "ssn", "dob"}
@@ -2098,7 +2098,7 @@ These are exercises that deepen understanding:
 2. **Add a multi-armed bandit** for question selection in `mlops/`. Replace
    the static recommender with Thompson sampling; track regret over time.
 3. **Add a Ray RLlib agent** for adaptive question selection. Skipped in the
-   first build; CLAUDE.md documents the design.
+   first build; README.md documents the design.
 4. **Wire an LLM tutor** (the LLMOps layer). Use Bedrock + a RAG pipeline
    over a question-bank vector DB.
 5. **Add an "Explainable AIOps"** stage to the scoring API. Take the

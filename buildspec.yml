@@ -19,7 +19,7 @@ phases:
         terraform version
         aws --version
 
-        # Detect infra dir (has trailing space per CLAUDE.md)
+        # Detect infra dir (has trailing space per README.md)
         SRC=$(pwd)
         cd "$SRC"
         INFRA_DIR=$(find . -maxdepth 1 -type d -iname "infra*" ! -name "." | head -1)

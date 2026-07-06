@@ -28,7 +28,7 @@ Logs/metrics/traces flow:
   Node/cont  → cAdvisor + node_exporter → ADOT    → AMP
 ```
 
-That covers all 14 sources documented in `../CLAUDE.md`.
+That covers all 14 sources documented in `../README.md`.
 
 ## What's in this directory
 

@@ -1,7 +1,7 @@
 """
 Log parsers — every source returns a CommonEvent dict.
 
-Schema (also documented in CLAUDE.md):
+Schema (also documented in README.md):
     ts, ingest_ts, source, host, severity, status, latency_ms, bytes,
     src_ip, user, path, user_agent, message, attrs
 

@@ -73,7 +73,7 @@ resource "aws_secretsmanager_secret_version" "rds" {
 
 # ─── RDS MySQL Instance ───────────────────────────────────────────────────────
 # PII lives only here with column-level encryption.
-# ML pipeline sees only student_id (UUID). No exceptions. (CLAUDE.md rule #4)
+# ML pipeline sees only student_id (UUID). No exceptions. (README.md rule #4)
 resource "aws_db_instance" "main" {
   identifier        = "${local.prefix}-mysql"
   engine            = "mysql"

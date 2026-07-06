@@ -12,7 +12,7 @@
 - [ ] **`processed_retention_days` (default 365)** — confirm legal retention requirements (FERPA: typically 5-7 years for student records).
 - [ ] **KMS key policy** — currently uses default service principal access. For multi-account, add explicit principals to `aws_kms_key.datalake`'s `policy`.
 - [ ] **Lake Formation admin** is currently `account-root`. For prod, set to specific IAM admin role(s).
-- [ ] **No PII in raw events** — see `CLAUDE.md` rule #4. Add CloudWatch Logs Insights query alerting on common PII patterns.
+- [ ] **No PII in raw events** — see `README.md` rule #4. Add CloudWatch Logs Insights query alerting on common PII patterns.
 - [ ] **S3 access logging** to a separate `${prefix}-access-logs` bucket (NOT included; add as a separate small bucket).
 - [ ] **Replication** to a DR region — out of scope per "no DR" answer. Add `aws_s3_bucket_replication_configuration` later for compliance.
 

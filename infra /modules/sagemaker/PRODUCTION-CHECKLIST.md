@@ -8,7 +8,7 @@
 - CloudWatch Log groups for all SageMaker components
 
 ## Sensitive: this module gates ALL ML inference
-A mistake here can take down the Recommendation API. Read `CLAUDE.md` "Sensitive Areas" section first.
+A mistake here can take down the Recommendation API. Read `README.md` "Sensitive Areas" section first.
 
 ## Pre-apply gates
 - [ ] **`AmazonSageMakerFullAccess`** is attached. In prod, replace with custom policy — Full Access grants `s3:*` on every bucket. Use `aws_iam_policy_document` to scope to project buckets only.

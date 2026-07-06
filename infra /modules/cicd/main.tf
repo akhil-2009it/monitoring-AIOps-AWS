@@ -337,7 +337,7 @@ resource "aws_codebuild_project" "model_deploy" {
               model_package_arn = pkgs[0]['ModelPackageArn']
               print(f"Deploying {model_package_arn}")
 
-              # Instance types per model spec in CLAUDE.md
+              # Instance types per model spec in README.md
               instance_map = {
                   'perf-predictor':    'ml.t2.medium',    # $0.065/hr
                   'knowledge-tracing': 'ml.c5.large',     # $0.17/hr

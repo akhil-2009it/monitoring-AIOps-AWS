@@ -1,7 +1,6 @@
-# CLAUDE.md — AIOps + MLOps + Security Analytics Platform
+# AIOps + MLOps + Security Analytics Platform
 
-This file is the primary guide for Claude Code when working in this repository.
-Read this entire file before touching any code, running any command, or making any suggestion.
+End-to-end reference for the repo. Read before touching code or running commands.
 
 ---
 
@@ -60,7 +59,7 @@ the model fresh.
 
 ```
 monitoring-mlops/
-├── CLAUDE.md
+├── README.md
 ├── infra /                        ← All AWS infrastructure
 │   ├── main.tf
 │   ├── variables.tf

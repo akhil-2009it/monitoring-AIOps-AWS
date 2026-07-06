@@ -4,7 +4,7 @@ Generic data validation entrypoint used by every pipeline's first step.
 Reads parquet/csv/json events from /opt/ml/processing/input/, asserts:
   - row count > min_rows
   - no duplicates on (student_id, answered_at)
-  - no PII fields present (rule #4 in CLAUDE.md)
+  - no PII fields present (rule #4 in README.md)
   - all numeric features within reasonable ranges
 
 Writes a single status JSON to /opt/ml/processing/output/validation.json.

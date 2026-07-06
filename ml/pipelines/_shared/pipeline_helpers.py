@@ -1,7 +1,7 @@
 """
 Shared SageMaker Pipeline scaffolding.
 
-All four model pipelines follow the same shape (CLAUDE.md):
+All four model pipelines follow the same shape (README.md):
     data_validation_step → feature_extraction_step → training_step
                           → evaluation_step → register_step (gated)
 

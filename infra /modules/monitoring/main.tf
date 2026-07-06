@@ -1,7 +1,7 @@
 locals {
   prefix = "${var.project}-${var.environment}"
 
-  # Drift thresholds from CLAUDE.md — do not change without team review
+  # Drift thresholds from README.md — do not change without team review
   drift = {
     psi_warning         = 0.10
     psi_alert           = 0.20
@@ -15,7 +15,7 @@ locals {
   # Models that have SageMaker endpoints
   model_endpoints = ["perf-predictor", "knowledge-tracing", "dropout-risk"]
 
-  # EventBridge retrain rule pattern from CLAUDE.md
+  # EventBridge retrain rule pattern from README.md
   retrain_models = {
     "perf-predictor"    = "perf-predictor-${var.environment}-pipeline"
     "knowledge-tracing" = "knowledge-tracing-${var.environment}-pipeline"
@@ -287,7 +287,7 @@ data "archive_file" "retrain_lambda" {
       sm = boto3.client('sagemaker', region_name=os.environ['AWS_REGION'])
       ENV = os.environ['ENVIRONMENT']
 
-      # Naming convention from CLAUDE.md rule #6
+      # Naming convention from README.md rule #6
       PIPELINE_MAP = {
           'perf-predictor':    f'perf-predictor-{ENV}-pipeline',
           'knowledge-tracing': f'knowledge-tracing-{ENV}-pipeline',
@@ -353,7 +353,7 @@ resource "aws_cloudwatch_log_group" "retrain_lambda" {
 }
 
 # ─── EventBridge Rules — Drift → Retrain ─────────────────────────────────────
-# Rule name pattern from CLAUDE.md: mlops-learning-{model}-drift-retrain-rule
+# Rule name pattern from README.md: mlops-learning-{model}-drift-retrain-rule
 resource "aws_cloudwatch_event_rule" "drift_retrain" {
   for_each = local.retrain_models
 

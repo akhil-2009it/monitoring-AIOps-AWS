@@ -2,7 +2,7 @@ locals {
   prefix       = "${var.project}-${var.environment}"
   cluster_name = local.prefix
 
-  # EKS namespaces from CLAUDE.md
+  # EKS namespaces from README.md
   namespaces = ["ingestion", "api", "rl-agent", "monitoring", "dashboard"]
 }
 
