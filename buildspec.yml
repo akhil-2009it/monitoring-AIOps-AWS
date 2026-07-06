@@ -1,0 +1,55 @@
+version: 0.2
+
+env:
+  variables:
+    TF_VERSION: "1.7.5"
+    AWS_REGION: "ap-south-1"
+    TF_ENV: "dev"
+    TF_ACTION: "apply"
+  shell: bash
+
+phases:
+  build:
+    commands:
+      - |
+        set -euxo pipefail
+        echo "Installing terraform ${TF_VERSION}"
+        curl -fsSLo /tmp/tf.zip "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+        unzip -o /tmp/tf.zip -d /usr/local/bin/
+        terraform version
+        aws --version
+
+        # Detect infra dir (has trailing space per CLAUDE.md)
+        SRC=$(pwd)
+        cd "$SRC"
+        INFRA_DIR=$(find . -maxdepth 1 -type d -iname "infra*" ! -name "." | head -1)
+        echo "INFRA_DIR='${INFRA_DIR}'"
+        [ -n "$INFRA_DIR" ] || { echo "no infra dir"; ls -la; exit 1; }
+        cp -r "${INFRA_DIR}" "$SRC/tfroot"
+        cd "$SRC/tfroot"
+        pwd; ls -la
+
+        terraform init -backend-config="key=monitoring-mlops/${TF_ENV}/terraform.tfstate" -input=false
+        terraform workspace select "${TF_ENV}" || terraform workspace new "${TF_ENV}"
+
+        # Bootstrap dependencies referenced by count() before full plan.
+        BOOTSTRAP_TARGETS="-target=module.vpc -target=module.datalake -target=module.eks"
+
+        if [ "${TF_ACTION}" = "plan" ]; then
+          # Plan won't show full graph, but validates syntax + shows bootstrap set.
+          terraform plan -input=false -var="environment=${TF_ENV}" $BOOTSTRAP_TARGETS -out=tfplan
+        elif [ "${TF_ACTION}" = "apply" ]; then
+          echo ">>> STAGE 1: bootstrap targets (datalake + vpc + eks)"
+          terraform apply -input=false -auto-approve -var="environment=${TF_ENV}" $BOOTSTRAP_TARGETS
+          echo ">>> STAGE 2: full apply"
+          terraform apply -input=false -auto-approve -var="environment=${TF_ENV}"
+        elif [ "${TF_ACTION}" = "destroy" ]; then
+          terraform destroy -input=false -auto-approve -var="environment=${TF_ENV}"
+        else
+          echo "Unknown TF_ACTION=${TF_ACTION}"; exit 1
+        fi
+
+artifacts:
+  files:
+    - "tfroot/tfplan"
+  discard-paths: no

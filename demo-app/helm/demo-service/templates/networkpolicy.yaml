@@ -1,0 +1,52 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "demo.fullname" . }}
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "demo.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Allow from kube-system (probes), demo namespace, monitoring (Prom scrape), kube-system (LB)
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: demo } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: monitoring } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+      ports:
+        - protocol: TCP
+          port: {{ .Values.containerPort }}
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Anywhere (RDS, Redis, OTEL collector, AWS APIs) — block IMDS explicitly
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 3306    # RDS MySQL
+        - protocol: TCP
+          port: 6379    # Redis
+        - protocol: TCP
+          port: 4318    # OTEL HTTP
+        - protocol: TCP
+          port: 8000    # demo-api
+        - protocol: TCP
+          port: 9094    # MSK TLS
+        - protocol: TCP
+          port: 9098    # MSK SASL/IAM
+{{- end }}

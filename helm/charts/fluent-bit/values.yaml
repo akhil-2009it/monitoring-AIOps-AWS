@@ -1,0 +1,100 @@
+# Wraps the upstream `fluent/fluent-bit` chart with project-specific config.
+fluentbit:
+  serviceAccount:
+    create: true
+    name: fluent-bit
+    annotations: {}
+      # eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/<prefix>-fluent-bit-irsa
+
+  rbac:
+    create: true
+
+  # Tolerate all taints so it covers control plane + spot nodes
+  tolerations:
+    - operator: Exists
+
+  resources:
+    requests: { cpu: 50m, memory: 100Mi }
+    limits:   { cpu: 250m, memory: 300Mi }
+
+  config:
+    service: |
+      [SERVICE]
+          Daemon                Off
+          Flush                 5
+          Log_Level             info
+          HTTP_Server           On
+          HTTP_Listen           0.0.0.0
+          HTTP_Port             2020
+          Health_Check          On
+
+    inputs: |
+      [INPUT]
+          Name                  tail
+          Path                  /var/log/containers/*.log
+          multiline.parser      docker, cri
+          Tag                   kube.*
+          Mem_Buf_Limit         50MB
+          Skip_Long_Lines       On
+
+      [INPUT]
+          Name                  tail
+          Path                  /var/log/nginx/*.log
+          Tag                   nginx.*
+          Mem_Buf_Limit         50MB
+
+    filters: |
+      [FILTER]
+          Name                  kubernetes
+          Match                 kube.*
+          Kube_URL              https://kubernetes.default.svc:443
+          Merge_Log             On
+          Keep_Log              Off
+          K8S-Logging.Parser    On
+          K8S-Logging.Exclude   On
+
+      [FILTER]
+          Name                  modify
+          Match                 *
+          Add                   ingest_ts ${time:now}
+
+    outputs: |
+      [OUTPUT]
+          Name                  kafka
+          Match                 kube.*
+          Brokers               ${MSK_BOOTSTRAP_BROKERS_TLS}
+          Topics                logs.app
+          rdkafka.security.protocol  ssl
+          rdkafka.message.timeout.ms 30000
+
+      [OUTPUT]
+          Name                  kafka
+          Match                 nginx.*
+          Brokers               ${MSK_BOOTSTRAP_BROKERS_TLS}
+          Topics                logs.nginx
+          rdkafka.security.protocol  ssl
+
+      [OUTPUT]
+          Name                  opensearch
+          Match                 *
+          Host                  ${OPENSEARCH_ENDPOINT}
+          Port                  443
+          tls                   On
+          Suppress_Type_Name    On
+          Logstash_Format       On
+          Logstash_Prefix       logs
+          Replace_Dots          On
+          AWS_Auth              On
+          AWS_Region            ap-south-1
+
+  env:
+    - name: MSK_BOOTSTRAP_BROKERS_TLS
+      valueFrom:
+        secretKeyRef:
+          name: aiops-aws-config
+          key: msk_bootstrap_brokers_tls
+    - name: OPENSEARCH_ENDPOINT
+      valueFrom:
+        secretKeyRef:
+          name: aiops-aws-config
+          key: opensearch_endpoint

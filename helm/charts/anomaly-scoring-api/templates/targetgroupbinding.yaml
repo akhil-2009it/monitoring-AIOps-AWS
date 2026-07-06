@@ -1,0 +1,15 @@
+{{- if .Values.targetGroupBinding.enabled }}
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: {{ include "anomaly-scoring-api.fullname" . }}
+  labels:
+    {{- include "anomaly-scoring-api.labels" . | nindent 4 }}
+spec:
+  serviceRef:
+    name: {{ include "anomaly-scoring-api.fullname" . }}
+    port: {{ .Values.service.port }}
+  targetGroupARN: {{ .Values.targetGroupBinding.targetGroupArn }}
+  targetType: ip
+  ipAddressType: ipv4
+{{- end }}

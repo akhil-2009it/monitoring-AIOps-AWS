@@ -1,0 +1,48 @@
+name: Build & publish drift-detector Lambda
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'ml/monitoring/**'
+      - '.github/workflows/drift-lambda-build.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, prod]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Build Lambda zip
+        run: |
+          mkdir -p .build
+          pip install --target .build/python -r api/scoring/requirements.txt
+          cp -R ml .build/python/ml
+          (cd .build/python && zip -qr ../drift-detector.zip .)
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/monitoring-mlops-gha-${{ matrix.environment }}-ml
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload zip + update functions
+        run: |
+          BUCKET="monitoring-mlops-${{ matrix.environment }}-models"
+          aws s3 cp .build/drift-detector.zip s3://$BUCKET/lambda/drift-detector/latest.zip
+          for model in perf-predictor dropout-risk knowledge-tracing; do
+            FN="monitoring-mlops-${{ matrix.environment }}-drift-detector-$model"
+            aws lambda update-function-code --function-name $FN \
+              --s3-bucket $BUCKET --s3-key lambda/drift-detector/latest.zip || \
+              echo "Function $FN does not exist yet — will be created on next terraform apply"
+          done

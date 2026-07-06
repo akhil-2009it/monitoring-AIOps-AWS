@@ -1,0 +1,46 @@
+nameOverride: worker
+isWorker: true
+
+image:
+  repository: YOUR_AWS_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/monitoring-mlops/demo-worker
+
+containerPort: 8080  # metrics only
+
+service:
+  enabled: false  # worker has no HTTP traffic, only Prom metrics on a pod port
+
+env:
+  SERVICE_NAME:                "demo-worker"
+  LOG_LEVEL:                   "INFO"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.monitoring:4318/v1/traces"
+  REDIS_URL:                   "redis://demo-redis-master.demo:6379/0"
+  POLL_INTERVAL:               "0.5"
+  DEMO_ERROR_RATE:             "0.05"
+  METRICS_PORT:                "8080"
+
+probes:
+  liveness:  { enabled: false }
+  readiness: { enabled: false }
+
+resources:
+  requests: { cpu: 200m, memory: 384Mi }
+  limits:   { cpu: 1000m, memory: 768Mi }
+
+securityContext:
+  readOnlyRootFilesystem: true
+
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+podMetricsAnnotations:
+  port: "8080"
+
+# Workers don't autoscale on CPU — scale by queue depth (KEDA), out of scope here
+autoscaling:
+  enabled: false
+
+# No ServiceMonitor (no Service); use pod-level scrape via prometheus.io/* annotations
+serviceMonitor:
+  enabled: false

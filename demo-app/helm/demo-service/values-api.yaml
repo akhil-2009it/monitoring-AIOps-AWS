@@ -1,0 +1,48 @@
+nameOverride: api
+
+image:
+  repository: YOUR_AWS_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/monitoring-mlops/demo-api
+
+containerPort: 8000
+
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8000
+
+env:
+  SERVICE_NAME:                "demo-api"
+  PORT:                        "8000"
+  LOG_LEVEL:                   "INFO"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.monitoring:4318/v1/traces"
+  DEMO_ERROR_RATE:             "0.02"
+  DEMO_SLOW_RATE:              "0.05"
+  DEMO_SLOW_LATENCY:           "1.5"
+  DB_HOST:                     "demo-mysql.cgxxxxxxx.ap-south-1.rds.amazonaws.com"   # override per env
+  DB_PORT:                     "3306"
+  DB_NAME:                     "demoapp"
+  DB_USER:                     "demo"
+  # DB_PASSWORD comes from External Secret in prod
+
+probes:
+  liveness:  { path: /healthz }
+  readiness: { path: /healthz }
+
+resources:
+  requests: { cpu: 200m, memory: 384Mi }
+  limits:   { cpu: 1000m, memory: 768Mi }
+
+autoscaling:
+  minReplicas: 2
+  maxReplicas: 8
+
+securityContext:
+  readOnlyRootFilesystem: true
+
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+podMetricsAnnotations:
+  port: "8000"

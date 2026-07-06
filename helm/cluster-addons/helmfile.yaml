@@ -1,0 +1,150 @@
+# Cluster add-ons that must exist before the recommendation-api chart can run.
+# Apply with: cd helm/cluster-addons && CLUSTER=dev helmfile sync
+#
+# Repository pre-reqs:
+#   helm repo add eks https://aws.github.io/eks-charts
+#   helm repo add jetstack https://charts.jetstack.io
+#   helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
+#   helm repo add external-secrets https://charts.external-secrets.io
+#   helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+#   helm repo add argo https://argoproj.github.io/argo-helm
+
+environments:
+  dev:
+    values:
+      - cluster_name: mlops-learning-dev
+        region: ap-south-1
+        account_id: "REPLACE_ME"
+  prod:
+    values:
+      - cluster_name: mlops-learning-prod
+        region: ap-south-1
+        account_id: "REPLACE_ME"
+
+---
+releases:
+  - name: aws-load-balancer-controller
+    namespace: kube-system
+    chart: eks/aws-load-balancer-controller
+    version: ~1.8.0
+    values:
+      - clusterName: {{ .Values.cluster_name }}
+        region: {{ .Values.region }}
+        vpcId: ""           # auto-detected when omitted
+        serviceAccount:
+          create: true
+          name: aws-load-balancer-controller
+          annotations:
+            eks.amazonaws.com/role-arn: arn:aws:iam::{{ .Values.account_id }}:role/{{ .Values.cluster_name }}-alb-controller-irsa
+
+  - name: external-dns
+    namespace: kube-system
+    chart: external-dns/external-dns
+    version: ~1.14.0
+    values:
+      - provider: aws
+        sources: [service, ingress]
+        policy: sync
+        registry: txt
+        txtOwnerId: {{ .Values.cluster_name }}
+        serviceAccount:
+          annotations:
+            eks.amazonaws.com/role-arn: arn:aws:iam::{{ .Values.account_id }}:role/{{ .Values.cluster_name }}-external-dns-irsa
+
+  - name: external-secrets
+    namespace: external-secrets
+    createNamespace: true
+    chart: external-secrets/external-secrets
+    version: ~0.9.0
+    values:
+      - installCRDs: true
+
+  - name: cert-manager
+    namespace: cert-manager
+    createNamespace: true
+    chart: jetstack/cert-manager
+    version: ~1.15.0
+    values:
+      - installCRDs: true
+
+  - name: metrics-server
+    namespace: kube-system
+    chart: metrics-server/metrics-server
+    version: ~3.12.0
+
+  - name: kube-prometheus-stack
+    namespace: monitoring
+    createNamespace: true
+    chart: prometheus-community/kube-prometheus-stack
+    version: ~62.0.0
+    values:
+      - prometheus:
+          prometheusSpec:
+            retention: 15d
+            scrapeInterval: 30s
+            podMonitorSelectorNilUsesHelmValues: false
+            serviceMonitorSelectorNilUsesHelmValues: false
+            resources:
+              requests: { cpu: 250m, memory: 1Gi }
+              limits: { cpu: 1000m, memory: 4Gi }
+        grafana:
+          adminPassword: ""        # set via External Secrets in prod
+          persistence:
+            enabled: true
+            size: 10Gi
+          serviceMonitor:
+            enabled: true
+        alertmanager:
+          alertmanagerSpec:
+            storage:
+              volumeClaimTemplate:
+                spec:
+                  accessModes: [ReadWriteOnce]
+                  resources:
+                    requests:
+                      storage: 5Gi
+
+  - name: opentelemetry-collector
+    namespace: monitoring
+    chart: open-telemetry/opentelemetry-collector
+    version: ~0.97.0
+    values:
+      - mode: deployment
+        config:
+          receivers:
+            otlp:
+              protocols:
+                http: { endpoint: 0.0.0.0:4318 }
+                grpc: { endpoint: 0.0.0.0:4317 }
+          exporters:
+            awsxray:
+              region: {{ .Values.region }}
+            prometheus:
+              endpoint: 0.0.0.0:8889
+          service:
+            pipelines:
+              traces:
+                receivers: [otlp]
+                exporters: [awsxray]
+              metrics:
+                receivers: [otlp]
+                exporters: [prometheus]
+
+  - name: argocd
+    namespace: argocd
+    createNamespace: true
+    chart: argo/argo-cd
+    version: ~7.0.0
+    values:
+      - global:
+          domain: argocd.{{ .Values.cluster_name }}.example.com
+        server:
+          ingress:
+            enabled: false        # enable + configure ALB ingress in prod
+          service:
+            type: ClusterIP
+        configs:
+          params:
+            server.insecure: "true"

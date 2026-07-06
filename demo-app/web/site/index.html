@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Demo Shop</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #fafafa; color: #222; }
+    header { background: #1f2937; color: white; padding: 16px 32px; }
+    main { max-width: 960px; margin: 32px auto; padding: 0 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .card { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .price { font-weight: bold; color: #059669; margin-top: 8px; }
+    button { background: #2563eb; color: white; border: 0; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    .status { font-size: 12px; color: #6b7280; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <header><h1>Demo Shop</h1></header>
+  <main>
+    <h2>Products</h2>
+    <div id="products" class="grid"></div>
+    <div class="status" id="status">loading...</div>
+  </main>
+
+  <script>
+    const API = window.location.origin + "/api";
+
+    async function loadProducts() {
+      const status = document.getElementById("status");
+      try {
+        const r = await fetch(API + "/products");
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const items = await r.json();
+        const grid = document.getElementById("products");
+        grid.innerHTML = items.map(p => `
+          <div class="card">
+            <div><strong>${p.name}</strong></div>
+            <div style="color:#6b7280;font-size:13px">${p.description || ""}</div>
+            <div class="price">$${p.price.toFixed(2)}</div>
+            <div style="font-size:12px;color:#9ca3af">stock: ${p.stock}</div>
+            <button onclick="buy(${p.id})">Buy</button>
+          </div>
+        `).join("");
+        status.textContent = `Loaded ${items.length} products at ${new Date().toISOString()}`;
+      } catch (e) {
+        status.textContent = "Error loading products: " + e.message;
+      }
+    }
+
+    async function buy(productId) {
+      const userId = 1 + Math.floor(Math.random() * 5);
+      try {
+        const r = await fetch(API + "/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: userId,
+            items: [{ product_id: productId, quantity: 1 }],
+            payment_method: "card"
+          })
+        });
+        const data = await r.json();
+        document.getElementById("status").textContent =
+          r.ok ? `Order #${data.id} placed for user ${userId}!` : `Failed: ${JSON.stringify(data)}`;
+      } catch (e) {
+        document.getElementById("status").textContent = "Error: " + e.message;
+      }
+    }
+
+    loadProducts();
+    setInterval(loadProducts, 30000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+otel:
+  mode: deployment
+  replicaCount: 2
+
+  serviceAccount:
+    create: true
+    name: adot-collector
+    annotations: {}
+      # eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/<prefix>-amp-remote-write
+
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: 1000m, memory: 1Gi }
+
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc: { endpoint: 0.0.0.0:4317 }
+          http: { endpoint: 0.0.0.0:4318 }
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: kubernetes-pods
+              kubernetes_sd_configs: [{ role: pod }]
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                  action: keep
+                  regex: "true"
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  target_label: __address__
+                  regex: (.+)
+                  replacement: $1
+
+    processors:
+      batch: {}
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+      resourcedetection:
+        detectors: [eks, ec2]
+        timeout: 5s
+
+    exporters:
+      awsxray:
+        region: ap-south-1
+      prometheusremotewrite:
+        endpoint: ${AMP_REMOTE_WRITE_URL}
+        auth: { authenticator: sigv4auth }
+      logging: { loglevel: warn }
+
+    extensions:
+      sigv4auth:
+        region: ap-south-1
+        service: aps
+
+    service:
+      extensions: [sigv4auth]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch, resourcedetection]
+          exporters: [awsxray, logging]
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [memory_limiter, batch, resourcedetection]
+          exporters: [prometheusremotewrite, logging]
+
+  env:
+    - name: AMP_REMOTE_WRITE_URL
+      valueFrom:
+        secretKeyRef:
+          name: aiops-aws-config
+          key: amp_remote_write_url

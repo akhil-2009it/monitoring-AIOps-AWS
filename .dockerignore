@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+data/events.jsonl
+data/api_events.jsonl
+tests/
+infra /
+*.docx
+.DS_Store

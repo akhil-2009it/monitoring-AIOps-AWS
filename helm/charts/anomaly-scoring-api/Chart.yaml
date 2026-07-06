@@ -1,0 +1,6 @@
+apiVersion: v2
+name: anomaly-scoring-api
+description: AIOps Anomaly Scoring API — real-time threat/anomaly detection
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

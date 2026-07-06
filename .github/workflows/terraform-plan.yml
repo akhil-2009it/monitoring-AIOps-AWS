@@ -1,0 +1,74 @@
+name: Terraform Plan
+on:
+  pull_request:
+    paths:
+      - 'infra /**'
+      - '.github/workflows/terraform-plan.yml'
+
+permissions:
+  contents: read
+  id-token: write       # required for AWS OIDC
+  pull-requests: write
+
+env:
+  AWS_REGION: ap-south-1
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, qa, prod]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.7.5 }
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/monitoring-mlops-gha-${{ matrix.env }}-tf
+          role-session-name: gha-tf-plan-${{ matrix.env }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform fmt
+        working-directory: 'infra '
+        run: terraform fmt -check -recursive
+
+      - name: terraform init
+        working-directory: 'infra '
+        run: terraform init -backend-config="key=monitoring-mlops/${{ matrix.env }}/terraform.tfstate"
+
+      - name: terraform validate
+        working-directory: 'infra '
+        run: terraform validate
+
+      - name: terraform plan (workspace=${{ matrix.env }})
+        working-directory: 'infra '
+        run: |
+          terraform workspace select ${{ matrix.env }} || terraform workspace new ${{ matrix.env }}
+          terraform plan -no-color -out=tfplan
+          terraform show -no-color tfplan > plan-${{ matrix.env }}.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ matrix.env }}
+          path: infra /plan-${{ matrix.env }}.txt
+
+      - name: Comment plan on PR (dev only)
+        if: matrix.env == 'dev'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            const plan = fs.readFileSync('infra /plan-dev.txt', 'utf8').slice(0, 60000)
+            const body = '### Terraform Plan (dev)\n```\n' + plan + '\n```'
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              body
+            })

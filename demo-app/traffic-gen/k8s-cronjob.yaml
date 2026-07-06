@@ -1,0 +1,85 @@
+---
+# Continuous-traffic CronJob — re-spawns every 30 min so traffic looks
+# realistic over the day.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: demo-traffic-normal
+  namespace: demo
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: locust
+              image: YOUR_AWS_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/monitoring-mlops/demo-traffic-gen:latest
+              args:
+                - locust
+                - -f
+                - /app/locustfile.py
+                - --headless
+                - --host
+                - http://demo-web.demo.svc.cluster.local
+                - --users
+                - "20"
+                - --spawn-rate
+                - "2"
+                - --run-time
+                - 25m
+              env:
+                - name: DEMO_MODE
+                  value: "normal"
+              resources:
+                requests: { cpu: 100m, memory: 128Mi }
+                limits:   { cpu: 500m, memory: 512Mi }
+
+---
+# Optional attack job. Disable with `kubectl -n demo patch cronjob demo-traffic-attack --patch '{"spec":{"suspend":true}}'`
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: demo-traffic-attack
+  namespace: demo
+spec:
+  schedule: "0 */4 * * *"      # every 4 hours
+  concurrencyPolicy: Forbid
+  suspend: true                 # off by default — you turn it on when demoing
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: locust
+              image: YOUR_AWS_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/monitoring-mlops/demo-traffic-gen:latest
+              args:
+                - locust
+                - -f
+                - /app/locustfile.py
+                - --headless
+                - --host
+                - http://demo-web.demo.svc.cluster.local
+                - --users
+                - "50"
+                - --spawn-rate
+                - "5"
+                - --run-time
+                - 5m
+              env:
+                - name: DEMO_MODE
+                  value: "attack"
+                - name: DEMO_ATTACK
+                  value: "brute-force"
+              resources:
+                requests: { cpu: 200m, memory: 256Mi }
+                limits:   { cpu: 1000m, memory: 1Gi }

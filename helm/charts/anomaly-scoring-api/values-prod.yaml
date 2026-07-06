@@ -1,0 +1,47 @@
+# Production overrides — render with `-f values-prod.yaml`.
+# This file should never contain secrets; pull those via External Secrets.
+
+replicaCount: 4
+
+image:
+  pullPolicy: IfNotPresent
+
+env:
+  LOG_LEVEL: INFO
+  MLOPS_AUTH_DISABLED: ""
+  MLOPS_RATE_LIMIT_PER_MIN: "300"
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.monitoring:4318/v1/traces
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 4
+  maxReplicas: 30
+  targetCPUUtilizationPercentage: 60
+  targetMemoryUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+serviceMonitor:
+  enabled: true
+
+externalSecrets:
+  enabled: true
+
+# Spread across AZs and nodes
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: anomaly-scoring-api
+        topologyKey: topology.kubernetes.io/zone

@@ -1,0 +1,107 @@
+# Generic shared values. Override per service in values-{api,worker,web}.yaml.
+
+nameOverride: ""
+
+replicaCount: 2
+
+image:
+  repository: ""        # MUST override
+  tag: ""               # falls back to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+# Container port + service port. Differ per service:
+#   api    8000
+#   worker 8080 (metrics only — not exposed via Service)
+#   web    80
+service:
+  enabled: true
+  type: ClusterIP
+  port: 80
+
+containerPort: 80
+isWorker: false   # workers don't get a Service; they only expose /metrics
+
+env: {}            # key/value -> ConfigMap
+
+# IRSA — service account annotation if needed (e.g., to write to MSK)
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits:   { cpu: 500m, memory: 512Mi }
+
+probes:
+  liveness:
+    enabled: true
+    path: /healthz
+    port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  readiness:
+    enabled: true
+    path: /healthz
+    port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# Autoscaling on CPU
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 65
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Ingress / ALB. Most demos use just one Ingress on the `web` chart.
+ingress:
+  enabled: false
+  className: alb
+  annotations: {}
+  hosts: []
+
+# ServiceMonitor for Prometheus scrape
+serviceMonitor:
+  enabled: true
+  port: http
+  path: /metrics
+  interval: 30s
+  namespace: monitoring
+  labels: { release: kube-prometheus-stack }
+
+# Pod scrape annotations as a fallback when ServiceMonitor isn't installed
+podMetricsAnnotations:
+  enabled: true
+  port: ""           # override per service (8000 / 8080 / "" for web)
+  path: /metrics
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101      # nginx runs as 101; api/worker as 1000
+  runAsGroup: 101
+  fsGroup: 101
+  seccompProfile: { type: RuntimeDefault }
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false   # nginx writes to /var/cache; override true for api/worker
+  runAsNonRoot: true
+  capabilities: { drop: [ALL] }
+
+networkPolicy:
+  enabled: true
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: ""    # filled by helper template
+          topologyKey: kubernetes.io/hostname

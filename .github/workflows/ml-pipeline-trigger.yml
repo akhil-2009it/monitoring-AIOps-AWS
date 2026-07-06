@@ -1,0 +1,71 @@
+name: Trigger SageMaker Pipeline
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Anomaly detector pipeline to run'
+        required: true
+        type: choice
+        options:
+          - rcf-metrics
+          - iforest-logs
+          - lstm-ae-traces
+          - log-embedding-anomaly
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options: [dev, qa, prod]
+      upsert_only:
+        description: 'Only upsert pipeline definition (do not run)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install boto3 sagemaker
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/monitoring-mlops-gha-${{ inputs.environment }}-ml
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve module path
+        id: paths
+        run: |
+          case "${{ inputs.model }}" in
+            rcf-metrics)            echo "module=ml.pipelines.rcf_metrics.run_pipeline"            >> $GITHUB_OUTPUT ;;
+            iforest-logs)           echo "module=ml.pipelines.iforest_logs.run_pipeline"           >> $GITHUB_OUTPUT ;;
+            lstm-ae-traces)         echo "module=ml.pipelines.lstm_autoencoder_traces.run_pipeline" >> $GITHUB_OUTPUT ;;
+            log-embedding-anomaly)  echo "module=ml.pipelines.log_embedding_anomaly.run_pipeline"  >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Read TF outputs (role + bucket)
+        id: tf
+        run: |
+          ROLE_ARN=$(aws sts get-caller-identity --query Account --output text \
+            | xargs -I{} echo "arn:aws:iam::{}:role/monitoring-mlops-${{ inputs.environment }}-sagemaker-exec-role")
+          BUCKET="monitoring-mlops-${{ inputs.environment }}-models"
+          echo "role_arn=$ROLE_ARN" >> $GITHUB_OUTPUT
+          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
+
+      - name: Upsert / start pipeline
+        run: |
+          ARGS="--env ${{ inputs.environment }} --region ${{ env.AWS_REGION }} --role-arn ${{ steps.tf.outputs.role_arn }} --bucket ${{ steps.tf.outputs.bucket }}"
+          if [[ "${{ inputs.upsert_only }}" == "true" ]]; then
+            ARGS="$ARGS --upsert-only"
+          fi
+          python -m ${{ steps.paths.outputs.module }} $ARGS

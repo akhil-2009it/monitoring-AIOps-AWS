@@ -1,0 +1,56 @@
+name: Terraform Apply
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options: [dev, qa, prod]
+      auto_approve:
+        description: 'Skip manual approval gate (dev only)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    # Manual approval gate via GitHub Environment protection rules.
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.7.5 }
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/monitoring-mlops-gha-${{ inputs.environment }}-tf
+          role-session-name: gha-tf-apply-${{ inputs.environment }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init
+        working-directory: 'infra '
+        run: terraform init -backend-config="key=monitoring-mlops/${{ inputs.environment }}/terraform.tfstate"
+
+      - name: terraform plan
+        working-directory: 'infra '
+        run: |
+          terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }}
+          terraform plan -out=tfplan
+
+      - name: terraform apply
+        working-directory: 'infra '
+        run: terraform apply -auto-approve tfplan
+
+      - name: Smoke test
+        working-directory: '.'
+        run: bash scripts/smoke_test.sh --env ${{ inputs.environment }}

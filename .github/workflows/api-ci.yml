@@ -1,0 +1,138 @@
+name: API CI/CD
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'api/**'
+      - 'ml/**'
+      - 'data/questions.json'
+      - 'helm/charts/anomaly-scoring-api/**'
+      - '.github/workflows/api-ci.yml'
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'ml/**'
+      - 'helm/charts/anomaly-scoring-api/**'
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPO: 429049115732.dkr.ecr.ap-south-1.amazonaws.com/monitoring-mlops/anomaly-scoring-api
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          pip install -r api/scoring/requirements.txt
+          pip install pytest ruff
+      - name: Lint
+        run: ruff check api/ ml/
+      - name: Unit + integration tests
+        run: |
+          python scripts/seed_logs.py --num-events 5000
+          pytest tests/ -v
+
+  build_and_push:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/monitoring-mlops-gha-ci
+          role-session-name: gha-api-ci
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: api/scoring/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REPO }}:${{ steps.meta.outputs.tag }}
+            ${{ env.ECR_REPO }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.ECR_REPO }}:${{ steps.meta.outputs.tag }}
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '0'   # don't fail the build; review in Security tab
+
+      - uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: trivy.sarif }
+
+  deploy_to_dev:
+    needs: build_and_push
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/monitoring-mlops-gha-dev
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name monitoring-mlops-dev
+      - uses: azure/setup-helm@v4
+        with: { version: v3.15.0 }
+      - name: Helm upgrade
+        run: |
+          helm upgrade --install anomaly-scoring-api helm/charts/anomaly-scoring-api/ \
+            --namespace api --create-namespace \
+            --set image.tag=${{ needs.build_and_push.outputs.image_tag }} \
+            --wait --timeout 5m
+      - name: Smoke test
+        run: bash scripts/smoke_test.sh --env dev
+
+  promote_to_prod:
+    needs: build_and_push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: prod      # GitHub environment with required reviewers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/monitoring-mlops-gha-prod
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name monitoring-mlops-prod
+      - uses: azure/setup-helm@v4
+        with: { version: v3.15.0 }
+      - name: Helm upgrade prod
+        run: |
+          helm upgrade --install anomaly-scoring-api helm/charts/anomaly-scoring-api/ \
+            --namespace api --create-namespace \
+            -f helm/charts/anomaly-scoring-api/values-prod.yaml \
+            --set image.tag=${{ needs.build_and_push.outputs.image_tag }} \
+            --wait --timeout 10m \
+            --atomic
+      - name: Smoke test prod
+        run: bash scripts/smoke_test.sh --env prod

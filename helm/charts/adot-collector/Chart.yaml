@@ -1,0 +1,12 @@
+apiVersion: v2
+name: adot-collector
+description: AWS Distro for OpenTelemetry — Prom remote-write to AMP, traces to X-Ray
+type: application
+version: 0.1.0
+appVersion: "0.106.0"
+
+dependencies:
+  - name: opentelemetry-collector
+    version: ~0.97.0
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    alias: otel

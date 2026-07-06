@@ -1,0 +1,157 @@
+# Defaults for the anomaly-scoring-api Helm chart.
+# Per-environment overrides go in values-{env}.yaml — see values-prod.yaml.
+
+replicaCount: 2
+
+image:
+  repository: YOUR_AWS_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/monitoring-mlops/anomaly-scoring-api
+  pullPolicy: IfNotPresent
+  tag: ""              # falls back to .Chart.AppVersion when empty
+
+service:
+  type: ClusterIP
+  port: 8087
+  targetPort: http
+
+# IRSA — ServiceAccount annotation set automatically when annotations.role is provided.
+serviceAccount:
+  create: true
+  name: anomaly-scoring-api
+  annotations: {}
+  # eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/<prefix>-anomaly-scoring-api-irsa
+
+env:
+  MLOPS_ALERTS_LOG_PATH:                       /tmp/alerts.jsonl
+  MLOPS_RATE_LIMIT_PER_MIN:                    "600"
+  AWS_REGION:                                  ap-south-1
+  LOG_LEVEL:                                   INFO
+  OTEL_EXPORTER_OTLP_ENDPOINT:                 ""
+  MLOPS_AUTH_DISABLED:                         ""
+  MLOPS_COGNITO_REGION:                        ap-south-1
+  MLOPS_COGNITO_USER_POOL_ID:                  ""
+  MLOPS_COGNITO_CLIENT_ID:                     ""
+  MLOPS_ENDPOINT_RCF_METRICS:                  ""
+  MLOPS_ENDPOINT_IFOREST_LOGS:                 ""
+  MLOPS_ENDPOINT_LSTM_AE_TRACES:               ""
+  MLOPS_ENDPOINT_LOG_EMBEDDING_ANOMALY:        ""
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 2
+  startup:
+    path: /health
+    initialDelaySeconds: 0
+    periodSeconds: 2
+    failureThreshold: 30   # 60s grace for cold start
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 65
+  targetMemoryUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# ALB ingress is wired via the AWS Load Balancer Controller's TargetGroupBinding —
+# safer than IngressClass when the ALB is provisioned by Terraform (this module).
+# Set targetGroupArn from the Terraform output `api_target_group_arn`.
+targetGroupBinding:
+  enabled: false
+  targetGroupArn: ""
+
+# Plain Ingress alternative (creates an ALB via the controller). Mutually exclusive with targetGroupBinding.
+ingress:
+  enabled: false
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    # alb.ingress.kubernetes.io/wafv2-acl-arn: ""
+    # alb.ingress.kubernetes.io/certificate-arn: ""
+  hosts: []
+
+networkPolicy:
+  enabled: true
+  # Allow ingress only from ALB target group / ingress controller pods + monitoring scraping.
+  allowedNamespaces:
+    - ingress-controller
+    - monitoring
+  egressRules:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32   # IMDS — never let app pods hit it directly
+      ports:
+        - protocol: TCP
+          port: 443
+
+serviceMonitor:
+  enabled: false  # toggle once kube-prometheus-stack is installed
+  namespace: monitoring
+  interval: 30s
+  scrapeTimeout: 10s
+  labels:
+    release: kube-prometheus-stack
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop: [ALL]
+
+# External Secrets — fetch Cognito IDs / endpoint names from Secrets Manager
+externalSecrets:
+  enabled: false
+  refreshInterval: 1h
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: ClusterSecretStore
+  remoteSecretName: ""        # e.g. "mlops-learning/dev/anomaly-scoring-api"
+
+priorityClassName: ""
+nodeSelector: {}
+tolerations: []
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: anomaly-scoring-api
+          topologyKey: kubernetes.io/hostname

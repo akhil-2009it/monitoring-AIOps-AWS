@@ -1,0 +1,57 @@
+nameOverride: web
+
+image:
+  repository: YOUR_AWS_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/monitoring-mlops/demo-web
+
+containerPort: 80
+
+service:
+  enabled: true
+  type: ClusterIP
+  port: 80
+
+env:
+  SERVICE_NAME: "demo-web"
+
+probes:
+  liveness:  { path: /healthz }
+  readiness: { path: /healthz }
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits:   { cpu: 250m, memory: 128Mi }
+
+# nginx writes to /var/cache/nginx and /var/run during startup → readOnly off
+securityContext:
+  readOnlyRootFilesystem: false
+
+podSecurityContext:
+  runAsUser: 101    # nginx user
+  runAsGroup: 101
+  fsGroup: 101
+
+# Web is the only ALB-fronted service
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme:           internet-facing
+    alb.ingress.kubernetes.io/target-type:      ip
+    alb.ingress.kubernetes.io/listen-ports:     '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect:     "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    # Wire WAF + ACM cert in prod via the demo-app Terraform module:
+    # alb.ingress.kubernetes.io/wafv2-acl-arn:    arn:aws:wafv2:...
+    # alb.ingress.kubernetes.io/certificate-arn:  arn:aws:acm:...
+  hosts:
+    - host: demo.local           # override in prod values
+      paths:
+        - path: /
+          pathType: Prefix
+
+# nginx doesn't expose /metrics by default. Skip ServiceMonitor.
+serviceMonitor:
+  enabled: false
+
+podMetricsAnnotations:
+  enabled: false
